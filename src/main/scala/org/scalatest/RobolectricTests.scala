@@ -3,9 +3,9 @@ package org.scalatest
 import org.robolectric._
 import org.robolectric.bytecode._
 import org.robolectric.res._
-import org.robolectric.internal.{ParallelUniverseInterface, ParallelUniverse}
+import org.robolectric.internal.{RoboTestUniverse, ParallelUniverseInterface}
 
-import org.robolectric.util.{Util, SQLiteMap}
+import org.robolectric.util.Util
 
 import java.net.URL
 import org.apache.maven.artifact.ant.{RemoteRepository, DependenciesTask}
@@ -13,7 +13,6 @@ import org.apache.tools.ant.Project
 import org.apache.maven.model.Dependency
 import org.fest.reflect.core.Reflection._
 import android.os.Build
-import org.robolectric.shadows.{ShadowContentResolver, ShadowLog, ShadowBundle}
 import org.robolectric.annotation.Config
 
 /**
@@ -30,8 +29,6 @@ import org.robolectric.annotation.Config
 trait RobolectricTests extends SuiteMixin { self: Suite =>
   import RobolectricTests._
 
-  lazy val databaseMap = new SQLiteMap
-
   lazy val shadowSuite = classLoader.loadClass(this.getClass.getName).newInstance.asInstanceOf[RobolectricTests]
 
   abstract override def runTest(testName: String, args: Args): Status = shadowSuite.runShadowTest(testName, args)
@@ -44,39 +41,31 @@ trait RobolectricTests extends SuiteMixin { self: Suite =>
   def setupAndroidEnvironmentForTest(args: Args) = {
 
     parallelUniverse.resetStaticState()
-    parallelUniverse.setDatabaseMap(databaseMap)
 
     val testLifecycle = classLoader.loadClass(classOf[DefaultTestLifecycle].getName).newInstance.asInstanceOf[TestLifecycle[_]]
     val strictI18n = Option(System.getProperty("robolectric.strictI18n")).exists(_.toBoolean)
 
-    val sdkVersion = Build.VERSION_CODES.ICE_CREAM_SANDWICH
+    val sdkVersion = Build.VERSION_CODES.JELLY_BEAN_MR2
     val versionClass = sdkEnvironment.bootstrappedClass(classOf[Build.VERSION])
     staticField("SDK_INT").ofType(classOf[Int]).in(versionClass).set(sdkVersion)
 
-    parallelUniverse.setUpApplicationState(null, testLifecycle, strictI18n, resourceLoader, null, new Config.Implementation(1, "", "", 1, Array()))
+    parallelUniverse.setUpApplicationState(null, testLifecycle, strictI18n, resourceLoader, null, new Config.Implementation(1, "", "", "", 1, Array()))
   }
 }
 
 object RobolectricTests {
-  val sdkConfig = new SdkConfig("4.1.2_r1_rc")
+  val sdkConfig = new SdkConfig(Build.VERSION_CODES.JELLY_BEAN_MR2)
   lazy val urls = MavenCentral.getLocalArtifactUrls(sdkConfig.getSdkClasspathDependencies: _*).values.toArray
 
-  lazy val shadowMap = {
-    val builder = new ShadowMap.Builder()
-    builder.addShadowClass(classOf[ShadowBundle])
-    builder.addShadowClass(classOf[ShadowLog])
-    builder.addShadowClass(classOf[ShadowContentResolver])
-    builder.build()
-  }
-  lazy val classHandler = new ShadowWrangler(shadowMap)
+  lazy val shadowMap = new ShadowMap.Builder().build()
+  lazy val classHandler = new ShadowWrangler(shadowMap, sdkConfig)
   lazy val classLoader = {
     val setup = new Setup() {
       override def shouldAcquire(name: String): Boolean = {
-        !(name.startsWith("org.scala") || name.startsWith("com.github")) && super.shouldAcquire(name)
+        !name.startsWith("org.scala") && super.shouldAcquire(name)
       }
     }
     setup.getClassesToDelegateFromRcl.add(classOf[RobolectricTests].getName)
-    setup.getClassesToDelegateFromRcl.add(this.getClass.getName)
     new AsmInstrumentingClassLoader(setup, urls: _*)
   }
 
@@ -101,7 +90,11 @@ object RobolectricTests {
     new PackageResourceLoader(resourcePath, resourceExtractor)
   }
 
-  lazy val parallelUniverse = sdkEnvironment.getRobolectricClassLoader.loadClass(classOf[ParallelUniverse].getName).asInstanceOf[Class[ParallelUniverseInterface]].newInstance()
+  lazy val parallelUniverse = {
+    val universe = sdkEnvironment.getRobolectricClassLoader.loadClass(classOf[RoboTestUniverse].getName).asInstanceOf[Class[ParallelUniverseInterface]].newInstance()
+    universe.setSdkConfig(sdkConfig)
+    universe
+  }
 
   object MavenCentral {
     private final val project = new Project
@@ -122,7 +115,7 @@ object RobolectricTests {
     }
 
     def getLocalArtifactUrl(dependency: Dependency): URL =
-      getLocalArtifactUrls(dependency)(dependency.getGroupId + ":" + dependency.getArtifactId + ":" + dependency.getType + ":" + dependency.getClassifier)
+      getLocalArtifactUrls(dependency)(dependency.getGroupId + ":" + dependency.getArtifactId + ":" + dependency.getType)
   }
 }
 
