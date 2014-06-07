@@ -12,8 +12,6 @@ import android.content.Context
 import android.content.pm.{PackageManager, ApplicationInfo}
 import java.lang.reflect.Method
 import org.robolectric.annotation.Config
-import com.almworks.sqlite4java.SQLite
-import org.robolectric.util.SQLiteLibraryLoader
 
 /**
   */
@@ -107,8 +105,6 @@ class RoboTestUniverse extends ParallelUniverseInterface {
       method("attach").withParameterTypes(classOf[Context]).in(application).invoke(contextImpl)
       appResources.updateConfiguration(configuration, appResources.getDisplayMetrics)
       shadowOf(application).setStrictI18n(strictI18n)
-
-      println(s"app: $application")
 
       Robolectric.application = application
       application.onCreate()

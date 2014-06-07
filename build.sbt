@@ -3,13 +3,20 @@ name := "robotest"
 
 organization := "com.geteit"
 
-version := "0.2"
+version := "0.3"
 
 scalaVersion := "2.11.0"
 
 crossScalaVersions := Seq("2.10.0")
 
 resolvers += "Local Maven Repository" at "file://"+Path.userHome.absolutePath+"/.m2/repository"
+
+publishTo := {
+  if (version.value.trim.endsWith("SNAPSHOT"))
+    Some(Resolver.file("snapshots", new File("../mvn-repo/snapshots" )) )
+  else
+    Some(Resolver.file("releases", new File("../mvn-repo/releases" )) )
+}
 
 libraryDependencies ++= Seq(
   "org.robolectric" % "robolectric" % "2.3",
@@ -20,11 +27,7 @@ libraryDependencies ++= Seq(
   "com.novocode" % "junit-interface" % "0.10" % "test"
 )
 
-parallelExecution in Test := false
-
 fork in Test := true
-
-testOptions += Tests.Argument(TestFrameworks.JUnit, "-q", "-v")
 
 lazy val root = Project("robotest", file("."))
 

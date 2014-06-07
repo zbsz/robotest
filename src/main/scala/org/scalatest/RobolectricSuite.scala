@@ -21,55 +21,65 @@ import org.robolectric.annotation.Config
  * This works similarly to RobolectricTestRunner class:
  * - prepares Robolectric class loader (uses some magic copied from RobolectricTestRunner)
  * - loads current suite in Robolectric loader
- * - executes test in shadowed suite
+ * - executes tests in shadowed suite
  *
  * XXX: this implementation doesn't support AndroidManifest and resources, so is only usable fo minimal set of tests
- * XXX: whole suite is loaded on robolectric class loader, this can cause some undesired effects, when our testcode is replaced with robo shadows (for example httpClient implementation)
  */
-trait RobolectricTests extends SuiteMixin { self: Suite =>
-  import RobolectricTests._
+trait RobolectricSuite extends SuiteMixin { self: Suite =>
+  import RobolectricSuite._
 
-  lazy val shadowSuite = classLoader.loadClass(this.getClass.getName).newInstance.asInstanceOf[RobolectricTests]
+  abstract override def run(testName: Option[String], args: Args): Status = {
+    val shadowSuite = classLoader.loadClass(this.getClass.getName).newInstance.asInstanceOf[RobolectricSuite]
+    shadowSuite.runShadow(testName, args)
+  }
 
-  abstract override def runTest(testName: String, args: Args): Status = shadowSuite.runShadowTest(testName, args)
-
-  def runShadowTest(testName: String, args: Args): Status = {
+  def runShadow(testName: Option[String], args: Args): Status = {
     setupAndroidEnvironmentForTest(args)
-    super.runTest(testName, args)
+    super.run(testName, args)
   }
 
   def setupAndroidEnvironmentForTest(args: Args) = {
+    val resourceLoader = {
+      val url = MavenCentral.getLocalArtifactUrl(sdkConfig.getSystemResourceDependency)
+      val systemResFs = Fs.fromJar(url)
+      val resourceExtractor = new ResourceExtractor(classLoader)
+      val resourcePath = new ResourcePath(resourceExtractor.getProcessedRFile, resourceExtractor.getPackageName, systemResFs.join("res"), systemResFs.join("assets"))
+      new PackageResourceLoader(resourcePath, resourceExtractor)
+    }
+
+    val parallelUniverse = {
+      val universe = classLoader.loadClass(classOf[RoboTestUniverse].getName).asInstanceOf[Class[ParallelUniverseInterface]].newInstance()
+      universe.setSdkConfig(sdkConfig)
+      universe
+    }
 
     parallelUniverse.resetStaticState()
 
     val testLifecycle = classLoader.loadClass(classOf[DefaultTestLifecycle].getName).newInstance.asInstanceOf[TestLifecycle[_]]
     val strictI18n = Option(System.getProperty("robolectric.strictI18n")).exists(_.toBoolean)
 
-    val sdkVersion = Build.VERSION_CODES.JELLY_BEAN_MR2
-    val versionClass = sdkEnvironment.bootstrappedClass(classOf[Build.VERSION])
-    staticField("SDK_INT").ofType(classOf[Int]).in(versionClass).set(sdkVersion)
-
     parallelUniverse.setUpApplicationState(null, testLifecycle, strictI18n, resourceLoader, null, new Config.Implementation(1, "", "", "", 1, Array()))
   }
 }
 
-object RobolectricTests {
-  val sdkConfig = new SdkConfig(Build.VERSION_CODES.JELLY_BEAN_MR2)
-  lazy val urls = MavenCentral.getLocalArtifactUrls(sdkConfig.getSdkClasspathDependencies: _*).values.toArray
+object RobolectricSuite {
 
-  lazy val shadowMap = new ShadowMap.Builder().build()
-  lazy val classHandler = new ShadowWrangler(shadowMap, sdkConfig)
-  lazy val classLoader = {
+  val sdkConfig = new SdkConfig(Build.VERSION_CODES.JELLY_BEAN_MR2)
+  val urls = MavenCentral.getLocalArtifactUrls(sdkConfig.getSdkClasspathDependencies: _*).values.toArray
+  val shadowMap = new ShadowMap.Builder().build()
+
+  val classHandler = new ShadowWrangler(shadowMap, sdkConfig)
+  val classLoader = {
     val setup = new Setup() {
       override def shouldAcquire(name: String): Boolean = {
         !name.startsWith("org.scala") && super.shouldAcquire(name)
       }
     }
-    setup.getClassesToDelegateFromRcl.add(classOf[RobolectricTests].getName)
+    setup.getClassesToDelegateFromRcl.add(classOf[RobolectricSuite].getName)
     new AsmInstrumentingClassLoader(setup, urls: _*)
   }
 
-  lazy val sdkEnvironment = {
+  val sdkEnvironment = {
     val env = new SdkEnvironment(sdkConfig, classLoader)
     env.setCurrentClassHandler(classHandler)
 
@@ -79,21 +89,11 @@ object RobolectricTests {
     field.setAccessible(true)
     field.set(null, classHandler)
 
+    val sdkVersion = Build.VERSION_CODES.JELLY_BEAN_MR2
+    val versionClass = env.bootstrappedClass(classOf[Build.VERSION])
+    staticField("SDK_INT").ofType(classOf[Int]).in(versionClass).set(sdkVersion)
+
     env
-  }
-
-  lazy val resourceLoader = {
-    val url = MavenCentral.getLocalArtifactUrl(sdkConfig.getSystemResourceDependency)
-    val systemResFs = Fs.fromJar(url)
-    val resourceExtractor = new ResourceExtractor(classLoader)
-    val resourcePath = new ResourcePath(resourceExtractor.getProcessedRFile, resourceExtractor.getPackageName, systemResFs.join("res"), systemResFs.join("assets"))
-    new PackageResourceLoader(resourcePath, resourceExtractor)
-  }
-
-  lazy val parallelUniverse = {
-    val universe = sdkEnvironment.getRobolectricClassLoader.loadClass(classOf[RoboTestUniverse].getName).asInstanceOf[Class[ParallelUniverseInterface]].newInstance()
-    universe.setSdkConfig(sdkConfig)
-    universe
   }
 
   object MavenCentral {
