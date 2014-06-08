@@ -102,3 +102,8 @@ This error happens on the second run of tests in single SBT session, it's a resu
 ```
 fork in Test := true
 ```
+
+## Limitations
+Current RoboTest version doesn't use `AndroidManifest.xml` and doesn't really support app resources. So it's only usable for limited cases, mostly for libraries, and less for actual android applications. We use it succesfully to test [slickdroid](https://github.com/zbsz/slickdroid) project.
+
+Full app support should be quite easy to add once needed, pull requests will be welcome.
