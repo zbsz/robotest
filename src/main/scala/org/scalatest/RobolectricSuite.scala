@@ -26,16 +26,55 @@ import org.robolectric.annotation.Config
  * XXX: this implementation doesn't support AndroidManifest and resources, so is only usable fo minimal set of tests
  */
 trait RobolectricSuite extends SuiteMixin { self: Suite =>
-  import RobolectricSuite._
 
-  abstract override def run(testName: Option[String], args: Args): Status = {
-    val shadowSuite = classLoader.loadClass(this.getClass.getName).newInstance.asInstanceOf[RobolectricSuite]
-    shadowSuite.runShadow(testName, args)
+  def useInstrumentation(name: String): Option[Boolean] = None
+
+  abstract override def run(testName: Option[String], args: Args): Status =
+    new RoboSuiteRunner(useInstrumentation).run(this.getClass, testName, args)
+
+  def runShadow(testName: Option[String], args: Args): Status = super.run(testName, args)
+}
+
+class RoboSuiteRunner(shouldAcquire: String => Option[Boolean]) { runner =>
+
+  val sdkConfig = new SdkConfig(Build.VERSION_CODES.JELLY_BEAN_MR2)
+  val urls = MavenCentral.getLocalArtifactUrls(sdkConfig.getSdkClasspathDependencies: _*).values.toArray
+  val shadowMap = new ShadowMap.Builder().build()
+
+  val classHandler = new ShadowWrangler(shadowMap, sdkConfig)
+  val classLoader = {
+    val setup = new Setup() {
+      override def shouldAcquire(name: String): Boolean = {
+        name != classOf[RoboSuiteRunner].getName &&
+          !name.startsWith("org.scala") &&
+          runner.shouldAcquire(name).getOrElse(super.shouldAcquire(name))
+      }
+    }
+    setup.getClassesToDelegateFromRcl.add(classOf[RoboSuiteRunner].getName)
+    new AsmInstrumentingClassLoader(setup, urls: _*)
   }
 
-  def runShadow(testName: Option[String], args: Args): Status = {
+  val sdkEnvironment = {
+    val env = new SdkEnvironment(sdkConfig, classLoader)
+    env.setCurrentClassHandler(classHandler)
+
+    val className = classOf[RobolectricInternals].getName
+    val robolectricInternalsClass = classLoader.loadClass(className)
+    val field = robolectricInternalsClass.getDeclaredField("classHandler")
+    field.setAccessible(true)
+    field.set(null, classHandler)
+
+    val sdkVersion = Build.VERSION_CODES.JELLY_BEAN_MR2
+    val versionClass = env.bootstrappedClass(classOf[Build.VERSION])
+    staticField("SDK_INT").ofType(classOf[Int]).in(versionClass).set(sdkVersion)
+
+    env
+  }
+
+  def run(suiteClass: Class[_ <: RobolectricSuite], testName: Option[String], args: Args): Status = {
+    val shadowSuite = classLoader.loadClass(suiteClass.getName).newInstance.asInstanceOf[RobolectricSuite]
     setupAndroidEnvironmentForTest(args)
-    super.run(testName, args)
+    shadowSuite.runShadow(testName, args)
   }
 
   def setupAndroidEnvironmentForTest(args: Args) = {
@@ -60,41 +99,6 @@ trait RobolectricSuite extends SuiteMixin { self: Suite =>
 
     parallelUniverse.setUpApplicationState(null, testLifecycle, strictI18n, resourceLoader, null, new Config.Implementation(1, "", "", "", 1, Array()))
   }
-}
-
-object RobolectricSuite {
-
-  val sdkConfig = new SdkConfig(Build.VERSION_CODES.JELLY_BEAN_MR2)
-  val urls = MavenCentral.getLocalArtifactUrls(sdkConfig.getSdkClasspathDependencies: _*).values.toArray
-  val shadowMap = new ShadowMap.Builder().build()
-
-  val classHandler = new ShadowWrangler(shadowMap, sdkConfig)
-  val classLoader = {
-    val setup = new Setup() {
-      override def shouldAcquire(name: String): Boolean = {
-        !name.startsWith("org.scala") && super.shouldAcquire(name)
-      }
-    }
-    setup.getClassesToDelegateFromRcl.add(classOf[RobolectricSuite].getName)
-    new AsmInstrumentingClassLoader(setup, urls: _*)
-  }
-
-  val sdkEnvironment = {
-    val env = new SdkEnvironment(sdkConfig, classLoader)
-    env.setCurrentClassHandler(classHandler)
-
-    val className = classOf[RobolectricInternals].getName
-    val robolectricInternalsClass = classLoader.loadClass(className)
-    val field = robolectricInternalsClass.getDeclaredField("classHandler")
-    field.setAccessible(true)
-    field.set(null, classHandler)
-
-    val sdkVersion = Build.VERSION_CODES.JELLY_BEAN_MR2
-    val versionClass = env.bootstrappedClass(classOf[Build.VERSION])
-    staticField("SDK_INT").ofType(classOf[Int]).in(versionClass).set(sdkVersion)
-
-    env
-  }
 
   object MavenCentral {
     private final val project = new Project
@@ -118,4 +122,3 @@ object RobolectricSuite {
       getLocalArtifactUrls(dependency)(dependency.getGroupId + ":" + dependency.getArtifactId + ":" + dependency.getType)
   }
 }
-

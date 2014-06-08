@@ -16,8 +16,6 @@ class DatabaseRoboSpec extends FeatureSpec with Matchers with BeforeAndAfter wit
   var db: SQLiteDatabase = _
 
   override protected def beforeAll(): Unit = {
-    Robolectric.application should not be null
-
     helper = new SQLiteOpenHelper(Robolectric.application, "test", null, 1) {
       override def onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int): Unit = {}
       override def onCreate(db: SQLiteDatabase): Unit = {}

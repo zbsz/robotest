@@ -3,11 +3,11 @@ name := "robotest"
 
 organization := "com.geteit"
 
-version := "0.3"
+version := "0.4"
 
 scalaVersion := "2.11.0"
 
-crossScalaVersions := Seq("2.10.0")
+crossScalaVersions := Seq("2.10.0", "2.11.0")
 
 resolvers += "Local Maven Repository" at "file://"+Path.userHome.absolutePath+"/.m2/repository"
 
