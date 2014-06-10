@@ -29,17 +29,23 @@ trait RobolectricSuite extends SuiteMixin { self: Suite =>
 
   def useInstrumentation(name: String): Option[Boolean] = None
 
+  def robolectricShadows: Seq[Class[_]] = Nil
+
   abstract override def run(testName: Option[String], args: Args): Status =
-    new RoboSuiteRunner(useInstrumentation).run(this.getClass, testName, args)
+    new RoboSuiteRunner(useInstrumentation, robolectricShadows).run(this.getClass, testName, args)
 
   def runShadow(testName: Option[String], args: Args): Status = super.run(testName, args)
 }
 
-class RoboSuiteRunner(shouldAcquire: String => Option[Boolean]) { runner =>
+class RoboSuiteRunner(shouldAcquire: String => Option[Boolean], shadows: Seq[Class[_]] = Nil) { runner =>
 
   val sdkConfig = new SdkConfig(Build.VERSION_CODES.JELLY_BEAN_MR2)
   val urls = MavenCentral.getLocalArtifactUrls(sdkConfig.getSdkClasspathDependencies: _*).values.toArray
-  val shadowMap = new ShadowMap.Builder().build()
+  val shadowMap = {
+    val builder = new ShadowMap.Builder()
+    shadows foreach builder.addShadowClass
+    builder.build()
+  }
 
   val classHandler = new ShadowWrangler(shadowMap, sdkConfig)
   val classLoader = {
