@@ -5,8 +5,33 @@ It provides `RobolectricSuite` mixin which has similar functionality as `Robolec
 ## Using RoboTest
 Latest RoboTest version supports only Robolectric 2.3.
 
+### Robolectric dependencies
+
+Make sure to have required robolectric libraries installed in local maven repository. Here is relevant part of robolectric eradme file:
+
+Robolectric requires the Google APIs for Android (specifically, the maps JAR) and Android support-v4 library. To download this onto your development
+machine use the Android SDK tools and then run the following to install them to your local Maven repository:
+
+```
+mvn install:install-file -DgroupId=com.google.android.maps \
+  -DartifactId=maps \
+  -Dversion=18_r3 \
+  -Dpackaging=jar \
+  -Dfile="$ANDROID_HOME/add-ons/addon-google_apis-google-18/libs/maps.jar"
+
+mvn install:install-file -DgroupId=com.android.support \
+  -DartifactId=support-v4 \
+  -Dversion=19.0.1 \
+  -Dpackaging=jar \
+  -Dfile="$ANDROID_HOME/extras/android/support/v4/android-support-v4.jar"
+```
+
+You will need to either replace or have `ANDROID_HOME` set to your local Android SDK for Maven to be able to install the jar.
+
 ### SBT Configuration
 ```
+resolvers += "Local Maven Repository" at "file://"+Path.userHome.absolutePath+"/.m2/repository"
+
 resolvers += "RoboTest releases" at "https://raw.github.com/zbsz/mvn-repo/master/releases/"
 
 libraryDependencies ++= Seq(
