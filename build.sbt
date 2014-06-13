@@ -3,7 +3,7 @@ name := "robotest"
 
 organization := "com.geteit"
 
-version := "0.5"
+version := "0.6"
 
 scalaVersion := "2.11.0"
 

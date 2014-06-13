@@ -15,6 +15,8 @@ import org.fest.reflect.core.Reflection._
 import android.os.Build
 import org.robolectric.annotation.Config
 
+import scala.util.Try
+
 /**
  * Enables Robolectric shadow implementations for Android stubs.
  *
@@ -104,6 +106,8 @@ class RoboSuiteRunner(shouldAcquire: String => Option[Boolean], shadows: Seq[Cla
     val strictI18n = Option(System.getProperty("robolectric.strictI18n")).exists(_.toBoolean)
 
     parallelUniverse.setUpApplicationState(null, testLifecycle, strictI18n, resourceLoader, null, new Config.Implementation(1, "", "", "", 1, Array()))
+
+    Try(resourceLoader.getRawValue(null)) // force resources loading
   }
 
   object MavenCentral {
