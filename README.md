@@ -3,11 +3,11 @@ RoboTest lets you use [Robolectric 2](http://www.robolectric.org) library in tes
 It provides `RobolectricSuite` mixin which has similar functionality as `RobolectricTestRunner` in regular JUnit tests.
 
 ## Using RoboTest
-Latest RoboTest version supports only Robolectric 2.3.
+Latest RoboTest version supports Robolectric 2.4.
 
 ### Robolectric dependencies
 
-Make sure to have required robolectric libraries installed in local maven repository. Here is relevant part of robolectric eradme file:
+Make sure to have required robolectric libraries installed in local maven repository. Here is relevant part of robolectric readme file:
 
 Robolectric requires the Google APIs for Android (specifically, the maps JAR) and Android support-v4 library. To download this onto your development
 machine use the Android SDK tools and then run the following to install them to your local Maven repository:
@@ -35,9 +35,11 @@ resolvers += "Local Maven Repository" at "file://"+Path.userHome.absolutePath+"/
 resolvers += "RoboTest releases" at "https://raw.github.com/zbsz/mvn-repo/master/releases/"
 
 libraryDependencies ++= Seq(
-  "org.robolectric" % "android-all" % "4.3_r2-robolectric-0" % "provided",  // android version used by Robolectric 2.3
+  "org.robolectric" % "android-all" % "5.0.0_r2-robolectric-0" % "provided",  // android version used by Robolectric 2.4
+  "com.android.support" % "support-v4" % "19.0.1",
   "junit" % "junit" % "4.8.2" % "test",                                     // required by Robolectric 2.3
-  "com.geteit" %% "robotest" % "0.4" % "test",                              // latest RoboTest version 
+  "com.geteit" %% "robotest" % "0.7" % "test",                              // latest RoboTest version 
+  "junit" % "junit" % "4.8.2" % "test",                                     // needed to run tests
   "org.scalatest" %% "scalatest" % "2.1.6" % "test"
 )
 
@@ -115,6 +117,8 @@ class DatabaseRoboSpec extends FeatureSpec with Matchers with BeforeAndAfter wit
 }
 ```
 
+Checkout example app project for complete setup and some other tests, also using AndroidManifest and resources.
+
 ### Shared state
 All tests in  `RobolectricSuite` are executed within single Robolectric environment, this is different from how default JUnit test runner works. This means that Robolectric state is not reset between individual test runs withing single suite, any changes to static variables, databases or properties done in one test will be present when subsequent test runs. Use `BeforeAndAfter` to perform any necessary cleanup.
 This approach seems to better fit how ScalaTest tests are usually written, and allows us to full ScalaTest potential.
@@ -127,8 +131,3 @@ This error happens on the second run of tests in single SBT session, it's a resu
 ```
 fork in Test := true
 ```
-
-## Limitations
-Current RoboTest version doesn't use `AndroidManifest.xml` and doesn't really support app resources. So it's only usable for limited cases, mostly for libraries, and less for actual android applications. We use it succesfully to test [slickdroid](https://github.com/zbsz/slickdroid) project.
-
-Full app support should be quite easy to add once needed, pull requests will be welcome.
