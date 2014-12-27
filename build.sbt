@@ -1,15 +1,17 @@
-
 name := "robotest"
 
 organization := "com.geteit"
 
-version := "0.6"
+version := "0.7"
 
-scalaVersion := "2.11.0"
+scalaVersion := "2.11.4"
 
-crossScalaVersions := Seq("2.10.0", "2.11.0")
+crossScalaVersions := Seq("2.10.0", "2.11.4")
 
-resolvers += "Local Maven Repository" at "file://"+Path.userHome.absolutePath+"/.m2/repository"
+resolvers ++= Seq(
+  "Local Maven Repository" at "file://"+Path.userHome.absolutePath+"/.m2/repository",
+  "AndroidSdk android extras repository" at (androidSdkDir.value / "extras" / "android" / "m2repository").toURI.toString
+)
 
 publishTo := {
   if (version.value.trim.endsWith("SNAPSHOT"))
@@ -19,15 +21,22 @@ publishTo := {
 }
 
 libraryDependencies ++= Seq(
-  "org.robolectric" % "robolectric" % "2.3",
-  "org.robolectric" % "android-all" % "4.3_r2-robolectric-0" % "provided",
+  "org.robolectric" % "robolectric" % "2.4",
+  "org.robolectric" % "android-all" % "5.0.0_r2-robolectric-0" % "provided",
+  "com.android.support" % "support-v4" % "19.0.0" % "provided",
   "org.scalatest" %% "scalatest" % "2.1.6",
   "junit" % "junit" % "4.8.2",
-  "org.easytesting" % "fest-assert-core" % "2.0M10" % "test",
-  "com.novocode" % "junit-interface" % "0.10" % "test"
+  "org.apache.maven" % "maven-ant-tasks" % "2.1.3"
 )
 
 fork in Test := true
 
 lazy val root = Project("robotest", file("."))
 
+lazy val androidSdkDir = settingKey[File]("Android sdk dir from ANDROID_HOME")
+
+androidSdkDir := {
+  val path = System.getenv("ANDROID_HOME")
+  if (path == null || !file(path).exists()) println(s"ANDROID_HOME not found: '$path'")
+  file(path)
+}

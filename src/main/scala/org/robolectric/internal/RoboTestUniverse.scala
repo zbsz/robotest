@@ -1,27 +1,28 @@
 package org.robolectric.internal
 
-import org.robolectric._
-import org.robolectric.shadows.{ShadowActivityThread, ShadowContextImpl, ShadowResources, ShadowLog}
-import org.robolectric.res.{ResourceLoader, ResBunch}
-import org.robolectric.res.builder.RobolectricPackageManager
+import java.lang.reflect.Method
+
+import android.app.Application
+import android.content.Context
+import android.content.pm.{ApplicationInfo, PackageManager}
 import android.content.res.{Configuration, Resources}
 import org.robolectric.Robolectric._
-import org.fest.reflect.core.Reflection._
-import android.app.{Application, Instrumentation}
-import android.content.Context
-import android.content.pm.{PackageManager, ApplicationInfo}
-import java.lang.reflect.Method
+import org.robolectric._
 import org.robolectric.annotation.Config
+import org.robolectric.res.builder.RobolectricPackageManager
+import org.robolectric.res.{ResBunch, ResourceLoader}
+import org.robolectric.shadows.{ShadowActivityThread, ShadowContextImpl, ShadowLog, ShadowResources}
+import org.scalatest.RoboSuiteRunner
 
 /**
   */
-class RoboTestUniverse extends ParallelUniverseInterface {
+class RoboTestUniverse(roboSuiteRunner: RoboSuiteRunner) extends ParallelUniverseInterface {
   private final val DEFAULT_PACKAGE_NAME: String = "org.robolectric.default"
   private var loggingInitialized: Boolean = false
   private var sdkConfig: SdkConfig = null
 
-  def resetStaticState() {
-    Robolectric.reset()
+  def resetStaticState(config: Config) {
+    Robolectric.reset(config)
     if (!loggingInitialized) {
       ShadowLog.setupLogging()
       loggingInitialized = true
@@ -39,73 +40,55 @@ class RoboTestUniverse extends ParallelUniverseInterface {
       case _ => qualifiers
     }
 
-  def setUpApplicationState(m: Method, testLifecycle: TestLifecycle[_], strictI18n: Boolean, systemResourceLoader: ResourceLoader, appManifest: AndroidManifest, config: Config) {
+  def setUpApplicationState(method: Method, testLifecycle: TestLifecycle[_], strictI18n: Boolean, systemResourceLoader: ResourceLoader, appManifest: AndroidManifest, config: Config) {
     Robolectric.application = null
     Robolectric.packageManager = new RobolectricPackageManager
     Robolectric.packageManager.addPackage(DEFAULT_PACKAGE_NAME)
-    var resourceLoader: ResourceLoader = null
-//    if (appManifest != null) {
-//      resourceLoader = robolectricTestRunner.getAppResourceLoader(sdkConfig, systemResourceLoader, appManifest)
-//      Robolectric.packageManager.addManifest(appManifest, resourceLoader)
-//    }
-//    else {
-      resourceLoader = systemResourceLoader
-//    }
+    val resourceLoader = roboSuiteRunner.resourceLoader
+    if (appManifest != null) {
+      Robolectric.packageManager.addManifest(appManifest, resourceLoader)
+    }
     ShadowResources.setSystemResources(systemResourceLoader)
     val qualifiers: String = addVersionQualifierToQualifiers(config.qualifiers)
     val systemResources: Resources = Resources.getSystem
     val configuration: Configuration = systemResources.getConfiguration
     shadowOf(configuration).overrideQualifiers(qualifiers)
     systemResources.updateConfiguration(configuration, systemResources.getDisplayMetrics)
-    val contextImplClass: Class[_] = `type`(ShadowContextImpl.CLASS_NAME).withClassLoader(getClass.getClassLoader).load
-    val activityThreadClass: Class[_] = `type`(ShadowActivityThread.CLASS_NAME).withClassLoader(getClass.getClassLoader).load
-    val activityThread = constructor.in(activityThreadClass).newInstance().asInstanceOf[AnyRef]
-
-    Robolectric.activityThread = activityThread.asInstanceOf[AnyRef]
-    field("mInstrumentation").ofType(classOf[Instrumentation]).in(activityThread).set(new RoboInstrumentation)
-    field("mCompatConfiguration").ofType(classOf[Configuration]).in(activityThread).set(configuration)
-
-    val systemContextImpl: Context = method("createSystemContext")
-      .withReturnType(contextImplClass)
-      .withParameterTypes(activityThreadClass)
-      .in(contextImplClass)
-      .invoke(activityThread).asInstanceOf[Context]
-
-    val application: Application = testLifecycle.createApplication(m, appManifest).asInstanceOf[Application]
-
+    shadowOf(systemResources.getAssets).setQualifiers(qualifiers)
+    val contextImplClass: Class[_] = ReflectionHelpers.loadClassReflectively(getClass.getClassLoader, ShadowContextImpl.CLASS_NAME)
+    val activityThreadClass: Class[_] = ReflectionHelpers.loadClassReflectively(getClass.getClassLoader, ShadowActivityThread.CLASS_NAME)
+    val activityThread: AnyRef = ReflectionHelpers.callConstructorReflectively(activityThreadClass)
+    Robolectric.activityThread = activityThread
+    ReflectionHelpers.setFieldReflectively(activityThread, "mInstrumentation", new RoboInstrumentation)
+    ReflectionHelpers.setFieldReflectively(activityThread, "mCompatConfiguration", configuration)
+    val systemContextImpl: Context = ReflectionHelpers.callStaticMethodReflectively(contextImplClass, "createSystemContext", new ReflectionHelpers.ClassParameter(activityThreadClass, activityThread))
+    val application: Application = testLifecycle.createApplication(method, appManifest, config).asInstanceOf[Application]
     if (application != null) {
       var packageName: String = if (appManifest != null) appManifest.getPackageName else null
       if (packageName == null) packageName = DEFAULT_PACKAGE_NAME
       var applicationInfo: ApplicationInfo = null
       try {
         applicationInfo = Robolectric.packageManager.getApplicationInfo(packageName, 0)
-      } catch {
-        case e: PackageManager.NameNotFoundException => throw new RuntimeException(e)
       }
-      val compatibilityInfoClass: Class[_] = `type`("android.content.res.CompatibilityInfo").load
-
-      val loadedApk = method("getPackageInfo")
-        .withParameterTypes(classOf[ApplicationInfo], compatibilityInfoClass, classOf[ClassLoader], classOf[Boolean], classOf[Boolean])
-        .in(activityThread)
-        .invoke(applicationInfo, null, getClass.getClassLoader, java.lang.Boolean.FALSE, java.lang.Boolean.TRUE).asInstanceOf[AnyRef]
-
+      catch {
+        case e: PackageManager.NameNotFoundException => {
+          throw new RuntimeException(e)
+        }
+      }
+      val compatibilityInfoClass: Class[_] = ReflectionHelpers.loadClassReflectively(getClass.getClassLoader, "android.content.res.CompatibilityInfo")
+      val loadedApk: AnyRef = ReflectionHelpers.callInstanceMethodReflectively(activityThread, "getPackageInfo", new ReflectionHelpers.ClassParameter(classOf[ApplicationInfo], applicationInfo), new ReflectionHelpers.ClassParameter(compatibilityInfoClass, null), new ReflectionHelpers.ClassParameter(classOf[ClassLoader], getClass.getClassLoader), new ReflectionHelpers.ClassParameter(classOf[Boolean], false), new ReflectionHelpers.ClassParameter(classOf[Boolean], true))
       shadowOf(application).bind(appManifest, resourceLoader)
       if (appManifest == null) {
         shadowOf(application).setPackageName(applicationInfo.packageName)
       }
       val appResources: Resources = application.getResources
-      field("mResources").ofType(classOf[Resources]).in(loadedApk).set(appResources)
-      val contextImpl: Context = method("createPackageContext")
-        .withReturnType(classOf[Context])
-        .withParameterTypes(classOf[String], classOf[Int])
-        .in(systemContextImpl)
-        .invoke(applicationInfo.packageName, Integer.valueOf(Context.CONTEXT_INCLUDE_CODE))
-
-      field("mInitialApplication").ofType(classOf[Application]).in(activityThread).set(application)
-      method("attach").withParameterTypes(classOf[Context]).in(application).invoke(contextImpl)
+      ReflectionHelpers.setFieldReflectively(loadedApk, "mResources", appResources)
+      val contextImpl: Context = ReflectionHelpers.callInstanceMethodReflectively(systemContextImpl, "createPackageContext", new ReflectionHelpers.ClassParameter(classOf[String], applicationInfo.packageName), new ReflectionHelpers.ClassParameter(classOf[Int], Context.CONTEXT_INCLUDE_CODE))
+      ReflectionHelpers.setFieldReflectively(activityThread, "mInitialApplication", application)
+      ReflectionHelpers.callInstanceMethodReflectively(application, "attach", new ReflectionHelpers.ClassParameter(classOf[Context], contextImpl))
       appResources.updateConfiguration(configuration, appResources.getDisplayMetrics)
+      shadowOf(appResources.getAssets).setQualifiers(qualifiers)
       shadowOf(application).setStrictI18n(strictI18n)
-
       Robolectric.application = application
       application.onCreate()
     }

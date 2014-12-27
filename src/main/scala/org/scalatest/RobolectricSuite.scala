@@ -1,20 +1,19 @@
 package org.scalatest
 
-import org.robolectric._
-import org.robolectric.bytecode._
-import org.robolectric.res._
-import org.robolectric.internal.{RoboTestUniverse, ParallelUniverseInterface}
+import java.io.File
+import java.lang.reflect.{Field, Modifier}
+import java.util.Properties
 
-import org.robolectric.util.Util
-
-import java.net.URL
-import org.apache.maven.artifact.ant.{RemoteRepository, DependenciesTask}
-import org.apache.tools.ant.Project
-import org.apache.maven.model.Dependency
-import org.fest.reflect.core.Reflection._
 import android.os.Build
+import org.robolectric._
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.Config.Implementation
+import org.robolectric.bytecode._
+import org.robolectric.internal.{ParallelUniverseInterface, ReflectionHelpers, RoboTestUniverse}
+import org.robolectric.res._
+import org.robolectric.util.AnnotationUtil
 
+import scala.collection.JavaConverters._
 import scala.util.Try
 
 /**
@@ -24,8 +23,6 @@ import scala.util.Try
  * - prepares Robolectric class loader (uses some magic copied from RobolectricTestRunner)
  * - loads current suite in Robolectric loader
  * - executes tests in shadowed suite
- *
- * XXX: this implementation doesn't support AndroidManifest and resources, so is only usable fo minimal set of tests
  */
 trait RobolectricSuite extends SuiteMixin { self: Suite =>
 
@@ -33,21 +30,81 @@ trait RobolectricSuite extends SuiteMixin { self: Suite =>
 
   def robolectricShadows: Seq[Class[_]] = Nil
 
-  abstract override def run(testName: Option[String], args: Args): Status =
-    new RoboSuiteRunner(useInstrumentation, robolectricShadows).run(this.getClass, testName, args)
+  lazy val runner = new RoboSuiteRunner(this.getClass, useInstrumentation, robolectricShadows)
+  
+  abstract override def run(testName: Option[String], args: Args): Status = runner.run(testName, args)
 
   def runShadow(testName: Option[String], args: Args): Status = super.run(testName, args)
 }
 
-class RoboSuiteRunner(shouldAcquire: String => Option[Boolean], shadows: Seq[Class[_]] = Nil) { runner =>
+class RoboSuiteRunner(suiteClass: Class[_ <: RobolectricSuite], shouldAcquire: String => Option[Boolean], shadows: Seq[Class[_]] = Nil) { runner =>
 
-  val sdkConfig = new SdkConfig(Build.VERSION_CODES.JELLY_BEAN_MR2)
-  val urls = MavenCentral.getLocalArtifactUrls(sdkConfig.getSdkClasspathDependencies: _*).values.toArray
+  val configProperties: Properties =
+    Option(suiteClass.getClassLoader.getResourceAsStream("org.robolectric.Config.properties")) .map { resourceAsStream =>
+      val properties = new Properties
+      properties.load(resourceAsStream)
+      properties
+    } .orNull
+
+  val config: Config =
+    Seq(AnnotationUtil.defaultsFor(classOf[Config]),
+      Config.Implementation.fromProperties(configProperties),
+      suiteClass.getAnnotation(classOf[Config])
+    ) reduceLeft { (config, opt) =>
+      Option(opt).fold(config)(new Implementation(config, _))
+    }
+
+  val appManifest: AndroidManifest = {
+
+    def libraryDirs(baseDir: FsFile) = config.libraries().map(baseDir.join(_)).toSeq
+
+    def createAppManifest(manifestFile: FsFile, resDir: FsFile, assetsDir: FsFile): AndroidManifest = {
+      if (manifestFile.exists) {
+        val manifest = new AndroidManifest(manifestFile, resDir, assetsDir)
+        manifest.setPackageName(System.getProperty("android.package"))
+        if (config.libraries().nonEmpty) {
+          manifest.setLibraryDirectories(libraryDirs(manifestFile.getParent).asJava)
+        }
+        manifest
+      } else {
+        System.out.print("WARNING: No manifest file found at " + manifestFile.getPath + ".")
+        System.out.println("Falling back to the Android OS resources only.")
+        System.out.println("To remove this warning, annotate your test class with @Config(manifest=Config.NONE).")
+        null
+      }
+    }
+
+    if (config.manifest == Config.NONE) null
+    else {
+      val manifestProperty = System.getProperty("android.manifest")
+      val resourcesProperty = System.getProperty("android.resources")
+      val assetsProperty = System.getProperty("android.assets")
+      val defaultManifest = config.manifest == Config.DEFAULT
+      if (defaultManifest && manifestProperty != null) {
+        createAppManifest(Fs.fileFromPath(manifestProperty), Fs.fileFromPath(resourcesProperty), Fs.fileFromPath(assetsProperty))
+      } else {
+        val manifestFile = Fs.currentDirectory().join(if (defaultManifest) AndroidManifest.DEFAULT_MANIFEST_NAME else config.manifest)
+        val baseDir = manifestFile.getParent
+        createAppManifest(manifestFile, baseDir.join(config.resourceDir), baseDir.join(AndroidManifest.DEFAULT_ASSETS_FOLDER))
+      }
+    }
+  }
+
+  val sdkVersion = {
+    if (config.reportSdk != -1) config.reportSdk
+    else Option(appManifest).fold(Build.VERSION_CODES.JELLY_BEAN_MR2)(_.getTargetSdkVersion)
+  }
+
+  val sdkConfig = new SdkConfig(sdkVersion)
   val shadowMap = {
     val builder = new ShadowMap.Builder()
     shadows foreach builder.addShadowClass
     builder.build()
   }
+
+  val jarResolver =
+    if (System.getProperty("robolectric.offline") != "true") new MavenDependencyResolver
+    else new LocalDependencyResolver(new File(System.getProperty("robolectric.dependency.dir", ".")))
 
   val classHandler = new ShadowWrangler(shadowMap, sdkConfig)
   val classLoader = {
@@ -58,7 +115,7 @@ class RoboSuiteRunner(shouldAcquire: String => Option[Boolean], shadows: Seq[Cla
           runner.shouldAcquire(name).getOrElse(super.shouldAcquire(name))
       }
     }
-    setup.getClassesToDelegateFromRcl.add(classOf[RoboSuiteRunner].getName)
+    val urls = jarResolver.getLocalArtifactUrls(sdkConfig.getSdkClasspathDependencies :_*)
     new AsmInstrumentingClassLoader(setup, urls: _*)
   }
 
@@ -67,68 +124,63 @@ class RoboSuiteRunner(shouldAcquire: String => Option[Boolean], shadows: Seq[Cla
     env.setCurrentClassHandler(classHandler)
 
     val className = classOf[RobolectricInternals].getName
-    val robolectricInternalsClass = classLoader.loadClass(className)
-    val field = robolectricInternalsClass.getDeclaredField("classHandler")
-    field.setAccessible(true)
-    field.set(null, classHandler)
+    val robolectricInternalsClass = ReflectionHelpers.loadClassReflectively(classLoader, className)
+    ReflectionHelpers.setStaticFieldReflectively(robolectricInternalsClass, "classHandler", classHandler)
 
-    val sdkVersion = Build.VERSION_CODES.JELLY_BEAN_MR2
     val versionClass = env.bootstrappedClass(classOf[Build.VERSION])
-    staticField("SDK_INT").ofType(classOf[Int]).in(versionClass).set(sdkVersion)
+    val sdk_int = versionClass.getDeclaredField("SDK_INT")
+    sdk_int.setAccessible(true)
+    val modifiers = classOf[Field].getDeclaredField("modifiers")
+    modifiers.setAccessible(true)
+    modifiers.setInt(sdk_int, sdk_int.getModifiers & ~Modifier.FINAL)
+    sdk_int.setInt(null, sdkVersion)
 
     env
   }
 
-  def run(suiteClass: Class[_ <: RobolectricSuite], testName: Option[String], args: Args): Status = {
-    val shadowSuite = classLoader.loadClass(suiteClass.getName).newInstance.asInstanceOf[RobolectricSuite]
-    setupAndroidEnvironmentForTest(args)
-    shadowSuite.runShadow(testName, args)
+  val systemResourceLoader = sdkEnvironment.getSystemResourceLoader(jarResolver, null)
+
+  val appResourceLoader = Option(appManifest) map { manifest =>
+    val appAndLibraryResourceLoaders = manifest.getIncludedResourcePaths.asScala.map(new PackageResourceLoader(_))
+    val overlayResourceLoader = new OverlayResourceLoader(manifest.getPackageName, appAndLibraryResourceLoaders.asJava)
+    val resourceLoaders = Map(
+      "android" -> systemResourceLoader,
+      appManifest.getPackageName -> overlayResourceLoader
+    )
+    new RoutingResourceLoader(resourceLoaders.asJava)
   }
 
-  def setupAndroidEnvironmentForTest(args: Args) = {
-    val resourceLoader = {
-      val url = MavenCentral.getLocalArtifactUrl(sdkConfig.getSystemResourceDependency)
-      val systemResFs = Fs.fromJar(url)
-      val resourceExtractor = new ResourceExtractor(classLoader)
-      val resourcePath = new ResourcePath(resourceExtractor.getProcessedRFile, resourceExtractor.getPackageName, systemResFs.join("res"), systemResFs.join("assets"))
-      new PackageResourceLoader(resourcePath, resourceExtractor)
-    }
+  val resourceLoader = appResourceLoader.getOrElse(systemResourceLoader)
 
-    val parallelUniverse = {
-      val universe = classLoader.loadClass(classOf[RoboTestUniverse].getName).asInstanceOf[Class[ParallelUniverseInterface]].newInstance()
-      universe.setSdkConfig(sdkConfig)
-      universe
-    }
+  val parallelUniverse = {
+    val universe = classLoader.loadClass(classOf[RoboTestUniverse].getName)
+      .asSubclass(classOf[ParallelUniverseInterface])
+      .getConstructor(classOf[RoboSuiteRunner])
+      .newInstance(this)
+    universe.setSdkConfig(sdkConfig)
+    universe
+  }
 
-    parallelUniverse.resetStaticState()
+  def run(testName: Option[String], args: Args): Status = {
+    Thread.currentThread.setContextClassLoader(sdkEnvironment.getRobolectricClassLoader)
 
+    parallelUniverse.resetStaticState(config)
     val testLifecycle = classLoader.loadClass(classOf[DefaultTestLifecycle].getName).newInstance.asInstanceOf[TestLifecycle[_]]
     val strictI18n = Option(System.getProperty("robolectric.strictI18n")).exists(_.toBoolean)
+    parallelUniverse.setUpApplicationState(null, testLifecycle, strictI18n, systemResourceLoader, appManifest, config)
 
-    parallelUniverse.setUpApplicationState(null, testLifecycle, strictI18n, resourceLoader, null, new Config.Implementation(1, "", "", "", 1, Array()))
-
-    Try(resourceLoader.getRawValue(null)) // force resources loading
-  }
-
-  object MavenCentral {
-    private final val project = new Project
-
-    def getLocalArtifactUrls(dependencies: Dependency*): Map[String, URL] = {
-      val dependenciesTask = new DependenciesTask
-      val sonatypeRepository = new RemoteRepository
-      sonatypeRepository.setUrl("https://oss.sonatype.org/content/groups/public/")
-      sonatypeRepository.setId("sonatype")
-      dependenciesTask.addConfiguredRemoteRepository(sonatypeRepository)
-      dependenciesTask.setProject(project)
-      for (dependency <- dependencies) {
-        dependenciesTask.addDependency(dependency)
-      }
-      dependenciesTask.execute()
-      import scala.collection.JavaConverters._
-      project.getProperties.entrySet().asScala.map(e => e.getKey.asInstanceOf[String] -> Util.url(e.getValue.asInstanceOf[String])).toMap
+    try {
+      Try(resourceLoader.getRawValue(null)) // force resources loading
+      val shadowSuite = classLoader.loadClass(suiteClass.getName).newInstance.asInstanceOf[RobolectricSuite]
+      shadowSuite.runShadow(testName, args)
+    } finally {
+      parallelUniverse.tearDownApplication()
+      parallelUniverse.resetStaticState(config)
+      Thread.currentThread.setContextClassLoader(classOf[RobolectricSuite].getClassLoader)
     }
-
-    def getLocalArtifactUrl(dependency: Dependency): URL =
-      getLocalArtifactUrls(dependency)(dependency.getGroupId + ":" + dependency.getArtifactId + ":" + dependency.getType)
   }
+}
+
+object RoboSuiteRunner {
+  Setup.CLASSES_TO_ALWAYS_DELEGATE.add(classOf[RoboSuiteRunner].getName)
 }
