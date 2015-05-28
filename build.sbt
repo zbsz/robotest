@@ -4,9 +4,9 @@ organization := "com.geteit"
 
 version := "0.7"
 
-scalaVersion := "2.11.4"
+scalaVersion := "2.11.6"
 
-crossScalaVersions := Seq("2.10.0", "2.11.4")
+crossScalaVersions := Seq("2.10.5", "2.11.6")
 
 resolvers ++= Seq(
   "Local Maven Repository" at "file://"+Path.userHome.absolutePath+"/.m2/repository",
