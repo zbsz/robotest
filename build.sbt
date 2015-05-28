@@ -21,7 +21,7 @@ publishTo := {
 }
 
 libraryDependencies ++= Seq(
-  "org.robolectric" % "robolectric" % "3.0-rc3",
+  "org.robolectric" % "robolectric" % "3.0-SNAPSHOT",
   "org.robolectric" % "android-all" % "5.0.0_r2-robolectric-1" % "provided",
   "com.android.support" % "support-v4" % "19.0.0" % "provided",
   "org.scalatest" %% "scalatest" % "2.2.5",

@@ -119,10 +119,9 @@ class RoboSuiteRunner(suiteClass: Class[_ <: RobolectricSuite], skipInstrumentat
 
   lazy val classLoaderConfig = {
     val builder = InstrumentationConfiguration.newBuilder()
-    builder.doNotAquireClass(classOf[RobolectricSuite].getName)
     builder.doNotAquireClass(classOf[RoboSuiteRunner].getName)
-    // TODO: find a way to disable anything starting with "org.scalatest"
-    // seems quite impossible with current api, so created PR to do that in robolectric: https://github.com/robolectric/robolectric/pull/1848
+    builder.doNotAquirePackage("org.scalatest")
+    builder.doNotAquirePackage("org.scalactic")
     skipInstrumentation foreach { cls => builder.doNotAquireClass(cls.getName) }
     builder.build()
   }
