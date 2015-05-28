@@ -22,10 +22,10 @@ publishTo := {
 
 libraryDependencies ++= Seq(
   "org.robolectric" % "robolectric" % "2.4",
-  "org.robolectric" % "android-all" % "5.0.0_r2-robolectric-0" % "provided",
+  "org.robolectric" % "android-all" % "5.0.0_r2-robolectric-1" % "provided",
   "com.android.support" % "support-v4" % "19.0.0" % "provided",
-  "org.scalatest" %% "scalatest" % "2.1.6",
-  "junit" % "junit" % "4.8.2",
+  "org.scalatest" %% "scalatest" % "2.2.5",
+  "junit" % "junit" % "4.12",
   "org.apache.maven" % "maven-ant-tasks" % "2.1.3"
 )
 
