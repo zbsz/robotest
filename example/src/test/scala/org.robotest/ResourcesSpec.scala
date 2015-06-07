@@ -8,6 +8,6 @@ import org.scalatest.{FeatureSpec, Matchers, RobolectricSuite}
 class ResourcesSpec extends FeatureSpec with Matchers with RobolectricSuite {
 
   scenario("Load string from android resources") {
-    Robolectric.application.getResources.getString(R.string.test_string) shouldEqual "test"
+    RuntimeEnvironment.application.getResources.getString(R.string.test_string) shouldEqual "test"
   }
 }

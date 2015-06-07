@@ -4,9 +4,9 @@ organization := "com.geteit"
 
 version := "0.7"
 
-scalaVersion := "2.11.4"
+scalaVersion := "2.11.6"
 
-crossScalaVersions := Seq("2.10.0", "2.11.4")
+crossScalaVersions := Seq("2.10.5", "2.11.6")
 
 resolvers ++= Seq(
   "Local Maven Repository" at "file://"+Path.userHome.absolutePath+"/.m2/repository",
@@ -21,11 +21,11 @@ publishTo := {
 }
 
 libraryDependencies ++= Seq(
-  "org.robolectric" % "robolectric" % "2.4",
-  "org.robolectric" % "android-all" % "5.0.0_r2-robolectric-0" % "provided",
+  "org.robolectric" % "robolectric" % "3.0-SNAPSHOT",
+  "org.robolectric" % "android-all" % "5.0.0_r2-robolectric-1" % "provided",
   "com.android.support" % "support-v4" % "19.0.0" % "provided",
-  "org.scalatest" %% "scalatest" % "2.1.6",
-  "junit" % "junit" % "4.8.2",
+  "org.scalatest" %% "scalatest" % "2.2.5",
+  "junit" % "junit" % "4.12",
   "org.apache.maven" % "maven-ant-tasks" % "2.1.3"
 )
 

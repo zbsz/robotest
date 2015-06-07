@@ -1,17 +1,20 @@
 package org.scalatest
 
 import java.io.File
-import java.lang.reflect.{Field, Modifier}
+import java.lang.annotation.Annotation
+import java.lang.reflect
+import java.security.SecureRandom
 import java.util.Properties
 
 import android.os.Build
 import org.robolectric._
 import org.robolectric.annotation.Config
-import org.robolectric.annotation.Config.Implementation
-import org.robolectric.bytecode._
-import org.robolectric.internal.{ParallelUniverseInterface, ReflectionHelpers, RoboTestUniverse}
+import org.robolectric.internal._
+import org.robolectric.internal.bytecode._
+import org.robolectric.internal.dependency._
+import org.robolectric.manifest.AndroidManifest
 import org.robolectric.res._
-import org.robolectric.util.AnnotationUtil
+import org.robolectric.util.{Logger, ReflectionHelpers}
 
 import scala.collection.JavaConverters._
 import scala.util.Try
@@ -26,36 +29,44 @@ import scala.util.Try
  */
 trait RobolectricSuite extends SuiteMixin { self: Suite =>
 
-  def useInstrumentation(name: String): Option[Boolean] = None
+  val skipInstrumentation: Seq[Class[_]] = Nil
 
   def robolectricShadows: Seq[Class[_]] = Nil
 
-  lazy val runner = new RoboSuiteRunner(this.getClass, useInstrumentation, robolectricShadows)
-  
+  lazy val runner = new RoboSuiteRunner(this.getClass, skipInstrumentation, robolectricShadows)
+
   abstract override def run(testName: Option[String], args: Args): Status = runner.run(testName, args)
 
   def runShadow(testName: Option[String], args: Args): Status = super.run(testName, args)
 }
 
-class RoboSuiteRunner(suiteClass: Class[_ <: RobolectricSuite], shouldAcquire: String => Option[Boolean], shadows: Seq[Class[_]] = Nil) { runner =>
+class RoboSuiteRunner(suiteClass: Class[_ <: RobolectricSuite], skipInstrumentation: Seq[Class[_]], shadows: Seq[Class[_]] = Nil) { runner =>
 
-  val configProperties: Properties =
-    Option(suiteClass.getClassLoader.getResourceAsStream("org.robolectric.Config.properties")) .map { resourceAsStream =>
-      val properties = new Properties
-      properties.load(resourceAsStream)
-      properties
-    } .orNull
-
-  val config: Config =
-    Seq(AnnotationUtil.defaultsFor(classOf[Config]),
-      Config.Implementation.fromProperties(configProperties),
-      suiteClass.getAnnotation(classOf[Config])
-    ) reduceLeft { (config, opt) =>
-      Option(opt).fold(config)(new Implementation(config, _))
+  lazy val config: Config = {
+    
+    val configProperties: Properties =
+      Option(suiteClass.getClassLoader.getResourceAsStream("robolectric.properties")) .map { resourceAsStream =>
+        try {
+          val properties = new Properties
+          properties.load(resourceAsStream)
+          properties
+        } finally { resourceAsStream.close() }
+      } .orNull
+    
+    def classConfigs(cls: Class[_], acc: List[Config] = Nil): List[Config] = cls match {
+      case null => acc
+      case _ => classConfigs(cls.getSuperclass, cls.getAnnotation(classOf[Config]) :: acc)
     }
+    
+    (RoboSuiteRunner.defaultsFor(classOf[Config]) 
+      :: Config.Implementation.fromProperties(configProperties) 
+      :: classConfigs(suiteClass)
+    )reduceLeft { (config, opt) =>
+      Option(opt).fold(config)(new Config.Implementation(config, _))
+    }
+  }
 
-  val appManifest: AndroidManifest = {
-
+  lazy val appManifest: AndroidManifest = {
     def libraryDirs(baseDir: FsFile) = config.libraries().map(baseDir.join(_)).toSeq
 
     def createAppManifest(manifestFile: FsFile, resDir: FsFile, assetsDir: FsFile): AndroidManifest = {
@@ -85,89 +96,86 @@ class RoboSuiteRunner(suiteClass: Class[_ <: RobolectricSuite], shouldAcquire: S
       } else {
         val manifestFile = Fs.currentDirectory().join(if (defaultManifest) AndroidManifest.DEFAULT_MANIFEST_NAME else config.manifest)
         val baseDir = manifestFile.getParent
-        createAppManifest(manifestFile, baseDir.join(config.resourceDir), baseDir.join(AndroidManifest.DEFAULT_ASSETS_FOLDER))
+        createAppManifest(manifestFile, baseDir.join(config.resourceDir), baseDir.join(Config.DEFAULT_ASSET_FOLDER))
       }
     }
   }
 
-  val sdkVersion = {
-    if (config.reportSdk != -1) config.reportSdk
-    else Option(appManifest).fold(Build.VERSION_CODES.JELLY_BEAN_MR2)(_.getTargetSdkVersion)
+  lazy val sdkVersion = {
+    require(config.sdk.length <= 1, s"RobolectricSuite does not support multiple values for @Config.sdk")
+    if (config.sdk.nonEmpty && config.sdk.head != -1) config.sdk.head
+    else Option(appManifest).fold(SdkConfig.FALLBACK_SDK_VERSION)(_.getTargetSdkVersion)
   }
 
-  val sdkConfig = new SdkConfig(sdkVersion)
-  val shadowMap = {
-    val builder = new ShadowMap.Builder()
-    shadows foreach builder.addShadowClass
+  lazy val jarResolver =
+    if (System.getProperty("robolectric.offline") != "true") {
+      val cacheDir = new File(new File(System.getProperty("java.io.tmpdir")), "robolectric")
+      cacheDir.mkdirs
+      if (cacheDir.exists) {
+        Logger.info("Dependency cache location: %s", cacheDir.getAbsolutePath)
+        new CachedDependencyResolver(new MavenDependencyResolver, cacheDir, 60 * 60 * 24 * 1000)
+      } else new MavenDependencyResolver
+    } else new LocalDependencyResolver(new File(System.getProperty("robolectric.dependency.dir", ".")))
+
+  lazy val classLoaderConfig = {
+    val builder = InstrumentationConfiguration.newBuilder()
+    builder.doNotAquireClass(classOf[RoboSuiteRunner].getName)
+    builder.doNotAquirePackage("org.scalatest")
+    builder.doNotAquirePackage("org.scalactic")
+    skipInstrumentation foreach { cls => builder.doNotAquireClass(cls.getName) }
     builder.build()
   }
 
-  val jarResolver =
-    if (System.getProperty("robolectric.offline") != "true") new MavenDependencyResolver
-    else new LocalDependencyResolver(new File(System.getProperty("robolectric.dependency.dir", ".")))
+  lazy val sdkEnvironment = {
+    val env = new InstrumentingClassLoaderFactory(classLoaderConfig, jarResolver).getSdkEnvironment(new SdkConfig(sdkVersion))
 
-  val classHandler = new ShadowWrangler(shadowMap, sdkConfig)
-  val classLoader = {
-    val setup = new Setup() {
-      override def shouldAcquire(name: String): Boolean = {
-        name != classOf[RoboSuiteRunner].getName &&
-          !name.startsWith("org.scala") &&
-          runner.shouldAcquire(name).getOrElse(super.shouldAcquire(name))
-      }
+    val shadowMap = {
+      val builder = new ShadowMap.Builder()
+      config.shadows() foreach builder.addShadowClass
+      shadows foreach builder.addShadowClass
+      builder.build()
     }
-    val urls = jarResolver.getLocalArtifactUrls(sdkConfig.getSdkClasspathDependencies :_*)
-    new AsmInstrumentingClassLoader(setup, urls: _*)
-  }
 
-  val sdkEnvironment = {
-    val env = new SdkEnvironment(sdkConfig, classLoader)
-    env.setCurrentClassHandler(classHandler)
+    val classHandler = new ShadowWrangler(shadowMap)
 
-    val className = classOf[RobolectricInternals].getName
-    val robolectricInternalsClass = ReflectionHelpers.loadClassReflectively(classLoader, className)
-    ReflectionHelpers.setStaticFieldReflectively(robolectricInternalsClass, "classHandler", classHandler)
-
-    val versionClass = env.bootstrappedClass(classOf[Build.VERSION])
-    val sdk_int = versionClass.getDeclaredField("SDK_INT")
-    sdk_int.setAccessible(true)
-    val modifiers = classOf[Field].getDeclaredField("modifiers")
-    modifiers.setAccessible(true)
-    modifiers.setInt(sdk_int, sdk_int.getModifiers & ~Modifier.FINAL)
-    sdk_int.setInt(null, sdkVersion)
+    val robolectricInternalsClass = ReflectionHelpers.loadClass(env.getRobolectricClassLoader, classOf[RobolectricInternals].getName)
+    ReflectionHelpers.setStaticField(robolectricInternalsClass, "classHandler", classHandler)
+    ReflectionHelpers.setStaticField(env.bootstrappedClass(classOf[Build.VERSION]), "SDK_INT", sdkVersion)
 
     env
   }
+  
+  lazy val systemResourceLoader = sdkEnvironment.getSystemResourceLoader(jarResolver)
 
-  val systemResourceLoader = sdkEnvironment.getSystemResourceLoader(jarResolver, null)
-
-  val appResourceLoader = Option(appManifest) map { manifest =>
+  lazy val appResourceLoader = Option(appManifest) map { manifest =>
     val appAndLibraryResourceLoaders = manifest.getIncludedResourcePaths.asScala.map(new PackageResourceLoader(_))
     val overlayResourceLoader = new OverlayResourceLoader(manifest.getPackageName, appAndLibraryResourceLoaders.asJava)
     val resourceLoaders = Map(
       "android" -> systemResourceLoader,
-      appManifest.getPackageName -> overlayResourceLoader
+      manifest.getPackageName -> overlayResourceLoader
     )
     new RoutingResourceLoader(resourceLoaders.asJava)
   }
+  
+  lazy val classLoader = sdkEnvironment.getRobolectricClassLoader
 
-  val resourceLoader = appResourceLoader.getOrElse(systemResourceLoader)
+  lazy val resourceLoader = appResourceLoader.getOrElse(systemResourceLoader)
 
-  val parallelUniverse = {
-    val universe = classLoader.loadClass(classOf[RoboTestUniverse].getName)
+  lazy val parallelUniverse =
+    sdkEnvironment.getRobolectricClassLoader
+      .loadClass(classOf[RoboTestUniverse].getName)
       .asSubclass(classOf[ParallelUniverseInterface])
       .getConstructor(classOf[RoboSuiteRunner])
       .newInstance(this)
-    universe.setSdkConfig(sdkConfig)
-    universe
-  }
 
   def run(testName: Option[String], args: Args): Status = {
     Thread.currentThread.setContextClassLoader(sdkEnvironment.getRobolectricClassLoader)
 
     parallelUniverse.resetStaticState(config)
+    parallelUniverse.setSdkConfig(sdkEnvironment.getSdkConfig)
+
     val testLifecycle = classLoader.loadClass(classOf[DefaultTestLifecycle].getName).newInstance.asInstanceOf[TestLifecycle[_]]
-    val strictI18n = Option(System.getProperty("robolectric.strictI18n")).exists(_.toBoolean)
-    parallelUniverse.setUpApplicationState(null, testLifecycle, strictI18n, systemResourceLoader, appManifest, config)
+    parallelUniverse.setUpApplicationState(null, testLifecycle, systemResourceLoader, appManifest, config)
 
     try {
       Try(resourceLoader.getRawValue(null)) // force resources loading
@@ -182,5 +190,11 @@ class RoboSuiteRunner(suiteClass: Class[_ <: RobolectricSuite], shouldAcquire: S
 }
 
 object RoboSuiteRunner {
-  Setup.CLASSES_TO_ALWAYS_DELEGATE.add(classOf[RoboSuiteRunner].getName)
+  new SecureRandom() // this starts up the Poller SunPKCS11-Darwin thread early, outside of any Robolectric classloader
+
+  private def defaultsFor[A <: Annotation](annotation: Class[A]): A = {
+    annotation.cast(reflect.Proxy.newProxyInstance(annotation.getClassLoader, Array[Class[_]](annotation), new reflect.InvocationHandler() {
+      override def invoke(proxy: AnyRef, method: reflect.Method, args: Array[AnyRef]): AnyRef = method.getDefaultValue
+    }))
+  }
 }
