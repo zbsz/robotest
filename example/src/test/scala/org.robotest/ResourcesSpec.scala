@@ -1,6 +1,6 @@
 package org.robotest
 
-import org.robolectric.Robolectric
+import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.scalatest.{FeatureSpec, Matchers, RobolectricSuite}
 

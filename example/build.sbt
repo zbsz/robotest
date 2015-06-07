@@ -14,7 +14,7 @@ organization := "com.geteit"
 
 version := "0.1"
 
-scalaVersion := "2.11.4"
+scalaVersion := "2.11.6"
 
 resolvers ++= Seq(
   "Local Maven Repository" at "file://"+Path.userHome.absolutePath+"/.m2/repository",
@@ -22,11 +22,8 @@ resolvers ++= Seq(
 )
 
 libraryDependencies ++= Seq(
-  "org.robolectric" % "android-all" % "5.0.0_r2-robolectric-0" % "provided",
-  aar("com.android.support" % "support-v4" % "20.0.0"),
-  "com.geteit" %% "robotest" % "0.7" % "test",
-  "junit" % "junit" % "4.8.2" % "test",
-  "org.scalatest" %% "scalatest" % "2.1.6" % "test"
+  "com.geteit" %% "robotest" % "0.8" % Test,
+  "org.scalatest" %% "scalatest" % "2.2.5" % Test
 )
 
 fork in Test := true

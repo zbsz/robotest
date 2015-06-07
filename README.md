@@ -1,46 +1,29 @@
 # RoboTest
-RoboTest lets you use [Robolectric 2](http://www.robolectric.org) library in tests using [ScalaTest](http://www.scalatest.org) framework, in Scala project.
+RoboTest lets you use [Robolectric](http://www.robolectric.org) library in tests using [ScalaTest](http://www.scalatest.org) framework, in Scala project.
 It provides `RobolectricSuite` mixin which has similar functionality as `RobolectricTestRunner` in regular JUnit tests.
 
 ## Using RoboTest
-Latest RoboTest version supports Robolectric 2.4.
+Latest RoboTest version supports Robolectric 3.0-SNAPSHOT 
+
+Robolectric 2.4 is supported by Robotest 0.7 (see releases).
 
 ### Robolectric dependencies
 
-Make sure to have required robolectric libraries installed in local maven repository. Here is relevant part of robolectric readme file:
+Make sure to have latest Robolectric 3.0-SNAPSHOT and its dependencies installed in local maven repository, as
+we are using yet unreleased, snapshot version.
 
-Robolectric requires the Google APIs for Android (specifically, the maps JAR) and Android support-v4 library. To download this onto your development
-machine use the Android SDK tools and then run the following to install them to your local Maven repository:
-
-```
-mvn install:install-file -DgroupId=com.google.android.maps \
-  -DartifactId=maps \
-  -Dversion=18_r3 \
-  -Dpackaging=jar \
-  -Dfile="$ANDROID_HOME/add-ons/addon-google_apis-google-18/libs/maps.jar"
-
-mvn install:install-file -DgroupId=com.android.support \
-  -DartifactId=support-v4 \
-  -Dversion=19.0.1 \
-  -Dpackaging=jar \
-  -Dfile="$ANDROID_HOME/extras/android/support/v4/android-support-v4.jar"
-```
-
-You will need to either replace or have `ANDROID_HOME` set to your local Android SDK for Maven to be able to install the jar.
 
 ### SBT Configuration
+For working sample, check example project included in Robotest sources.
+
 ```
 resolvers += "Local Maven Repository" at "file://"+Path.userHome.absolutePath+"/.m2/repository"
 
 resolvers += "RoboTest releases" at "https://raw.github.com/zbsz/mvn-repo/master/releases/"
 
 libraryDependencies ++= Seq(
-  "org.robolectric" % "android-all" % "5.0.0_r2-robolectric-0" % "provided",  // android version used by Robolectric 2.4
-  "com.android.support" % "support-v4" % "19.0.1",
-  "junit" % "junit" % "4.8.2" % "test",                                     // required by Robolectric 2.3
-  "com.geteit" %% "robotest" % "0.7" % "test",                              // latest RoboTest version 
-  "junit" % "junit" % "4.8.2" % "test",                                     // needed to run tests
-  "org.scalatest" %% "scalatest" % "2.1.6" % "test"
+  "com.geteit" %% "robotest" % "0.8" % Test,                              // latest RoboTest version 
+  "org.scalatest" %% "scalatest" % "2.2.5" % Test 
 )
 
 fork in Test := true
