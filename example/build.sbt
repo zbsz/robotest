@@ -22,7 +22,7 @@ resolvers ++= Seq(
 )
 
 libraryDependencies ++= Seq(
-  "com.geteit" %% "robotest" % "0.8" % Test,
+  "com.geteit" %% "robotest" % "0.9" % Test,
   "org.scalatest" %% "scalatest" % "2.2.5" % Test
 )
 

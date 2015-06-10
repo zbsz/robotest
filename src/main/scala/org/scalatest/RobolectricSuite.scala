@@ -30,17 +30,18 @@ import scala.util.Try
 trait RobolectricSuite extends SuiteMixin { self: Suite =>
 
   val skipInstrumentation: Seq[Class[_]] = Nil
+  val skipInstrumentationPkg: Seq[String] = Nil
 
   def robolectricShadows: Seq[Class[_]] = Nil
 
-  lazy val runner = new RoboSuiteRunner(this.getClass, skipInstrumentation, robolectricShadows)
+  lazy val runner = new RoboSuiteRunner(this.getClass, skipInstrumentation, skipInstrumentationPkg, robolectricShadows)
 
   abstract override def run(testName: Option[String], args: Args): Status = runner.run(testName, args)
 
   def runShadow(testName: Option[String], args: Args): Status = super.run(testName, args)
 }
 
-class RoboSuiteRunner(suiteClass: Class[_ <: RobolectricSuite], skipInstrumentation: Seq[Class[_]], shadows: Seq[Class[_]] = Nil) { runner =>
+class RoboSuiteRunner(suiteClass: Class[_ <: RobolectricSuite], skipInstrumentation: Seq[Class[_]], val skipInstrumentationPkg: Seq[String], shadows: Seq[Class[_]] = Nil) { runner =>
 
   lazy val config: Config = {
     
@@ -94,7 +95,11 @@ class RoboSuiteRunner(suiteClass: Class[_ <: RobolectricSuite], skipInstrumentat
       if (defaultManifest && manifestProperty != null) {
         createAppManifest(Fs.fileFromPath(manifestProperty), Fs.fileFromPath(resourcesProperty), Fs.fileFromPath(assetsProperty))
       } else {
-        val manifestFile = Fs.currentDirectory().join(if (defaultManifest) AndroidManifest.DEFAULT_MANIFEST_NAME else config.manifest)
+        val manifestFile = {
+          val file = Fs.currentDirectory().join(if (defaultManifest) AndroidManifest.DEFAULT_MANIFEST_NAME else config.manifest)
+          if (file.exists() || !defaultManifest) file
+          else Fs.currentDirectory().join("src", "main", AndroidManifest.DEFAULT_MANIFEST_NAME)
+        }
         val baseDir = manifestFile.getParent
         createAppManifest(manifestFile, baseDir.join(config.resourceDir), baseDir.join(Config.DEFAULT_ASSET_FOLDER))
       }
@@ -123,6 +128,7 @@ class RoboSuiteRunner(suiteClass: Class[_ <: RobolectricSuite], skipInstrumentat
     builder.doNotAquirePackage("org.scalatest")
     builder.doNotAquirePackage("org.scalactic")
     skipInstrumentation foreach { cls => builder.doNotAquireClass(cls.getName) }
+    skipInstrumentationPkg foreach builder.doNotAquirePackage
     builder.build()
   }
 
@@ -165,8 +171,8 @@ class RoboSuiteRunner(suiteClass: Class[_ <: RobolectricSuite], skipInstrumentat
     sdkEnvironment.getRobolectricClassLoader
       .loadClass(classOf[RoboTestUniverse].getName)
       .asSubclass(classOf[ParallelUniverseInterface])
-      .getConstructor(classOf[RoboSuiteRunner])
-      .newInstance(this)
+      .getConstructor(classOf[ResourceLoader])
+      .newInstance(resourceLoader)
 
   def run(testName: Option[String], args: Args): Status = {
     Thread.currentThread.setContextClassLoader(sdkEnvironment.getRobolectricClassLoader)

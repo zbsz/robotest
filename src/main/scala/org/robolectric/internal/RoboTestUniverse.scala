@@ -16,9 +16,8 @@ import org.robolectric.res.builder.DefaultPackageManager
 import org.robolectric.res.{ResBundle, ResourceLoader}
 import org.robolectric.util.ReflectionHelpers
 import org.robolectric.util.ReflectionHelpers.ClassParameter
-import org.scalatest.RoboSuiteRunner
 
-class RoboTestUniverse(roboSuiteRunner: RoboSuiteRunner) extends ParallelUniverseInterface {
+class RoboTestUniverse(resourceLoader: ResourceLoader) extends ParallelUniverseInterface {
   private final val DEFAULT_PACKAGE_NAME: String = "org.robolectric.default"
   private val shadowsAdapter: ShadowsAdapter = Robolectric.getShadowsAdapter
   private var loggingInitialized: Boolean = false
@@ -47,7 +46,6 @@ class RoboTestUniverse(roboSuiteRunner: RoboSuiteRunner) extends ParallelUnivers
     RuntimeEnvironment.application = null
     val packageManager = new DefaultPackageManager(shadowsAdapter)
     packageManager.addPackage(DEFAULT_PACKAGE_NAME)
-    val resourceLoader = roboSuiteRunner.resourceLoader
     if (appManifest != null) {
       packageManager.addManifest(appManifest, resourceLoader)
     }
