@@ -8,6 +8,10 @@ minSdkVersion in Android := "8"
 
 targetSdkVersion in Android := "18"
 
+scalacOptions ++= Seq("-target:jvm-1.7")
+
+javacOptions ++= Seq("-source", "1.7", "-target", "1.7")
+
 name := "robotest-example"
 
 organization := "com.geteit"
