@@ -17,8 +17,9 @@ version := "0.1"
 scalaVersion := "2.11.6"
 
 resolvers ++= Seq(
-  "Local Maven Repository" at "file://"+Path.userHome.absolutePath+"/.m2/repository",
-  "RoboTest releases" at "https://raw.github.com/zbsz/mvn-repo/master/releases/"
+  Resolver.mavenLocal,
+  "RoboTest releases" at "https://raw.github.com/zbsz/mvn-repo/master/releases/",
+  Resolver.sonatypeRepo("snapshots")
 )
 
 libraryDependencies ++= Seq(
