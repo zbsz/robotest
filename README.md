@@ -7,22 +7,17 @@ Latest RoboTest version supports Robolectric 3.0-SNAPSHOT
 
 Robolectric 2.4 is supported by Robotest 0.7 (see releases).
 
-### Robolectric dependencies
-
-Make sure to have latest Robolectric 3.0-SNAPSHOT and its dependencies installed in local maven repository, as
-we are using yet unreleased, snapshot version.
-
-
 ### SBT Configuration
 For working sample, check example project included in Robotest sources.
 
 ```
-resolvers += "Local Maven Repository" at "file://"+Path.userHome.absolutePath+"/.m2/repository"
-
-resolvers += "RoboTest releases" at "https://raw.github.com/zbsz/mvn-repo/master/releases/"
+resolvers += Seq(
+  "RoboTest releases" at "https://raw.github.com/zbsz/mvn-repo/master/releases/",
+  Resolver.sonatypeRepo("snapshots")
+)
 
 libraryDependencies ++= Seq(
-  "com.geteit" %% "robotest" % "0.8" % Test,                              // latest RoboTest version 
+  "com.geteit" %% "robotest" % "0.10" % Test,                              // latest RoboTest version
   "org.scalatest" %% "scalatest" % "2.2.5" % Test 
 )
 
