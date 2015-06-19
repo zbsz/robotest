@@ -8,7 +8,10 @@ scalaVersion := "2.11.6"
 
 crossScalaVersions := Seq("2.10.5", "2.11.6")
 
-resolvers += "Local Maven Repository" at "file://"+Path.userHome.absolutePath+"/.m2/repository"
+resolvers ++= Seq(
+  Resolver.mavenLocal,
+  Resolver.sonatypeRepo("snapshots")
+)
 
 publishTo := {
   if (version.value.trim.endsWith("SNAPSHOT"))
