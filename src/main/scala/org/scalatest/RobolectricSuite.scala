@@ -4,6 +4,7 @@ import java.io.File
 import java.lang.annotation.Annotation
 import java.lang.reflect
 import java.security.SecureRandom
+import java.util
 import java.util.Properties
 
 import android.os.Build
@@ -31,20 +32,27 @@ trait RobolectricSuite extends SuiteMixin { self: Suite =>
 
   val skipInstrumentation: Seq[Class[_]] = Nil
   val skipInstrumentationPkg: Seq[String] = Nil
+  val aarsDir = Fs.currentDirectory().join("target", "aars")
 
   def robolectricShadows: Seq[Class[_]] = Nil
 
-  lazy val runner = new RoboSuiteRunner(this.getClass, skipInstrumentation, skipInstrumentationPkg, robolectricShadows)
+  lazy val runner = new RoboSuiteRunner(this)
 
   abstract override def run(testName: Option[String], args: Args): Status = runner.run(testName, args)
 
   def runShadow(testName: Option[String], args: Args): Status = super.run(testName, args)
 }
 
-class RoboSuiteRunner(suiteClass: Class[_ <: RobolectricSuite], skipInstrumentation: Seq[Class[_]], val skipInstrumentationPkg: Seq[String], shadows: Seq[Class[_]] = Nil) { runner =>
+class RoboSuiteRunner(suite: RobolectricSuite) { runner =>
+
+  val suiteClass = suite.getClass
+  val skipInstrumentation = suite.skipInstrumentation
+  val skipInstrumentationPkg = suite.skipInstrumentationPkg
+  val shadows = suite.robolectricShadows
+  val aarsDir = suite.aarsDir
 
   lazy val config: Config = {
-    
+
     val configProperties: Properties =
       Option(suiteClass.getClassLoader.getResourceAsStream("robolectric.properties")) .map { resourceAsStream =>
         try {
@@ -53,14 +61,14 @@ class RoboSuiteRunner(suiteClass: Class[_ <: RobolectricSuite], skipInstrumentat
           properties
         } finally { resourceAsStream.close() }
       } .orNull
-    
+
     def classConfigs(cls: Class[_], acc: List[Config] = Nil): List[Config] = cls match {
       case null => acc
       case _ => classConfigs(cls.getSuperclass, cls.getAnnotation(classOf[Config]) :: acc)
     }
-    
-    (RoboSuiteRunner.defaultsFor(classOf[Config]) 
-      :: Config.Implementation.fromProperties(configProperties) 
+
+    (RoboSuiteRunner.defaultsFor(classOf[Config])
+      :: Config.Implementation.fromProperties(configProperties)
       :: classConfigs(suiteClass)
     )reduceLeft { (config, opt) =>
       Option(opt).fold(config)(new Config.Implementation(config, _))
@@ -72,7 +80,10 @@ class RoboSuiteRunner(suiteClass: Class[_ <: RobolectricSuite], skipInstrumentat
 
     def createAppManifest(manifestFile: FsFile, resDir: FsFile, assetsDir: FsFile): AndroidManifest = {
       if (manifestFile.exists) {
-        val manifest = new AndroidManifest(manifestFile, resDir, assetsDir)
+        val manifest = new AndroidManifest(manifestFile, resDir, assetsDir) {
+          override def findLibraries(): util.List[FsFile] =
+            aarsDir.listFiles().filter(d => d.isDirectory && d.listFiles().nonEmpty).toList.asJava
+        }
         manifest.setPackageName(System.getProperty("android.package"))
         if (config.libraries().nonEmpty) {
           manifest.setLibraryDirectories(libraryDirs(manifestFile.getParent).asJava)
