@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="org.robotest">
-    <uses-sdk android:minSdkVersion="11" android:targetSdkVersion="18"/>
+    <uses-sdk android:minSdkVersion="17" android:targetSdkVersion="21"/>
 
-    <application android:name="org.robotest.TestApplication" />
+    <application android:name="org.robotest.TestApplication" android:theme="@style/AppTheme">
+      <activity android:name="TestActivity"
+                android:label="@string/app_name"
+                android:launchMode="singleTop">
+      </activity>
+    </application>
 </manifest>

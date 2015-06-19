@@ -2,15 +2,11 @@ import android.Keys._
 
 android.Plugin.androidBuild
 
-platformTarget in Android := "android-18"
+platformTarget in Android := "android-21"
 
 minSdkVersion in Android := "8"
 
-targetSdkVersion in Android := "18"
-
-scalacOptions ++= Seq("-target:jvm-1.7")
-
-javacOptions ++= Seq("-source", "1.7", "-target", "1.7")
+targetSdkVersion in Android := "21"
 
 name := "robotest-example"
 
@@ -27,7 +23,8 @@ resolvers ++= Seq(
 )
 
 libraryDependencies ++= Seq(
-  "com.geteit" %% "robotest" % "0.9" % Test,
+  "com.android.support" % "appcompat-v7" % "22.1.1",
+  "com.geteit" %% "robotest" % "0.10" % Test,
   "org.scalatest" %% "scalatest" % "2.2.5" % Test
 )
 
