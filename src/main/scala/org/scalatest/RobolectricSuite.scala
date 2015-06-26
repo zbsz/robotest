@@ -81,8 +81,10 @@ class RoboSuiteRunner(suite: RobolectricSuite) { runner =>
     def createAppManifest(manifestFile: FsFile, resDir: FsFile, assetsDir: FsFile): AndroidManifest = {
       if (manifestFile.exists) {
         val manifest = new AndroidManifest(manifestFile, resDir, assetsDir) {
-          override def findLibraries(): util.List[FsFile] =
-            aarsDir.listFiles().filter(d => d.isDirectory && d.listFiles().nonEmpty).toList.asJava
+          override def findLibraries(): util.List[FsFile] = {
+            val aars = if (aarsDir.isDirectory) aarsDir.listFiles().filter(d => d.isDirectory && d.listFiles().nonEmpty).toList else Nil
+            (aars ++ super.findLibraries().asScala).distinct.asJava
+          }
         }
         manifest.setPackageName(System.getProperty("android.package"))
         if (config.libraries().nonEmpty) {

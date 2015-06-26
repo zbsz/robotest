@@ -24,7 +24,7 @@ resolvers ++= Seq(
 
 libraryDependencies ++= Seq(
   "com.android.support" % "appcompat-v7" % "22.1.1",
-  "com.geteit" %% "robotest" % "0.10" % Test,
+  "com.geteit" %% "robotest" % "0.11" % Test,
   "org.scalatest" %% "scalatest" % "2.2.5" % Test
 )
 
