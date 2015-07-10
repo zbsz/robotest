@@ -3,7 +3,7 @@ RoboTest lets you use [Robolectric](http://www.robolectric.org) library in tests
 It provides `RobolectricSuite` mixin which has similar functionality as `RobolectricTestRunner` in regular JUnit tests.
 
 ## Using RoboTest
-Latest RoboTest version supports Robolectric 3.0-SNAPSHOT 
+Latest RoboTest version supports Robolectric 3.0
 
 Robolectric 2.4 is supported by Robotest 0.7 (see releases).
 
@@ -12,8 +12,7 @@ For working sample, check example project included in Robotest sources.
 
 ```
 resolvers += Seq(
-  "RoboTest releases" at "https://raw.github.com/zbsz/mvn-repo/master/releases/",
-  Resolver.sonatypeRepo("snapshots")
+  "RoboTest releases" at "https://raw.github.com/zbsz/mvn-repo/master/releases/"
 )
 
 libraryDependencies ++= Seq(
