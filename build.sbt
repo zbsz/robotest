@@ -9,8 +9,7 @@ scalaVersion := "2.11.6"
 crossScalaVersions := Seq("2.10.5", "2.11.6")
 
 resolvers ++= Seq(
-  Resolver.mavenLocal,
-  Resolver.sonatypeRepo("snapshots")
+  Resolver.mavenLocal
 )
 
 publishTo := {
@@ -21,7 +20,7 @@ publishTo := {
 }
 
 libraryDependencies ++= Seq(
-  "org.robolectric" % "robolectric" % "3.0-SNAPSHOT",
+  "org.robolectric" % "robolectric" % "3.0",
   "org.robolectric" % "android-all" % "5.0.0_r2-robolectric-1",
   "org.scalatest" %% "scalatest" % "2.2.5",
   "junit" % "junit" % "4.12",
