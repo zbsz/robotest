@@ -14,17 +14,11 @@ organization := "com.geteit"
 
 version := "0.1"
 
-scalaVersion := "2.11.6"
-
-resolvers ++= Seq(
-  Resolver.mavenLocal,
-  "RoboTest releases" at "https://raw.github.com/zbsz/mvn-repo/master/releases/",
-  Resolver.sonatypeRepo("snapshots")
-)
+scalaVersion := "2.11.7"
 
 libraryDependencies ++= Seq(
   "com.android.support" % "appcompat-v7" % "22.1.1",
-  "com.geteit" %% "robotest" % "0.11" % Test,
+  "com.geteit" %% "robotest" % "0.12" % Test,
   "org.scalatest" %% "scalatest" % "2.2.5" % Test
 )
 

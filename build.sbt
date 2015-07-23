@@ -8,17 +8,6 @@ scalaVersion := "2.11.7"
 
 crossScalaVersions := Seq("2.10.5", "2.11.7")
 
-resolvers ++= Seq(
-  Resolver.mavenLocal
-)
-
-publishTo := {
-  if (version.value.trim.endsWith("SNAPSHOT"))
-    Some(Resolver.file("snapshots", new File("../mvn-repo/snapshots" )) )
-  else
-    Some(Resolver.file("releases", new File("../mvn-repo/releases" )) )
-}
-
 libraryDependencies ++= Seq(
   "org.robolectric" % "robolectric" % "3.0",
   "org.robolectric" % "android-all" % "5.0.0_r2-robolectric-1",
@@ -30,4 +19,3 @@ libraryDependencies ++= Seq(
 fork in Test := true
 
 lazy val root = Project("robotest", file("."))
-

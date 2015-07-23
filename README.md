@@ -11,12 +11,8 @@ Robolectric 2.4 is supported by Robotest 0.7 (see releases).
 For working sample, check example project included in Robotest sources.
 
 ```
-resolvers += Seq(
-  "RoboTest releases" at "https://raw.github.com/zbsz/mvn-repo/master/releases/"
-)
-
 libraryDependencies ++= Seq(
-  "com.geteit" %% "robotest" % "0.11" % Test,                              // latest RoboTest version
+  "com.geteit" %% "robotest" % "0.12" % Test,           // latest RoboTest version
   "org.scalatest" %% "scalatest" % "2.2.5" % Test 
 )
 
