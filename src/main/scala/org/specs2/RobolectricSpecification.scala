@@ -5,13 +5,20 @@ import core.Env
 
 abstract class RobolectricSpecification
 extends Specification
+with BeforeAfterAll
 with robotest.RoboTest
 {
-  lazy val runner = new RoboSuiteRunner(this)
+  var runner = new RoboSuiteRunner(this)
 
   override def structure = (env: Env) => {
     runner.setup()
-    runner.roboInstance.structureShadow(env)
+    val i = runner.roboInstance
+    i.runner = runner
+    i.structureShadow(env)
+  }
+
+  def afterAll() = {
+    runner.teardown()
   }
 
   def structureShadow = super.structure

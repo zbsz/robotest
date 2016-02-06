@@ -12,36 +12,33 @@ import org.specs2._, matcher._, specification._
  * - uses singe database for all tests
  * - creates test table before each test and drops it after
   */
-class DatabaseRoboSpec extends RobolectricSpecification with MustMatchers with BeforeAfterEach with BeforeAfterAll {
-
-  var helper: SQLiteOpenHelper = _
-  var db: SQLiteDatabase = _
-
-  def beforeAll(): Unit = {
-    helper = new SQLiteOpenHelper(RuntimeEnvironment.application, "test", null, 1) {
+trait DatabaseRoboSpec extends RobolectricSpecification with MustMatchers {
+  lazy val helper: SQLiteOpenHelper = new SQLiteOpenHelper(RuntimeEnvironment.application, "test", null, 1) {
       override def onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int): Unit = {}
       override def onCreate(db: SQLiteDatabase): Unit = {}
     }
-  }
 
-  def afterAll(): Unit = {
-    RuntimeEnvironment.application.getDatabasePath(helper.getDatabaseName).delete()
-  }
+  lazy val db: SQLiteDatabase = helper.getWritableDatabase
 
-  def before = {
-    db = helper.getWritableDatabase
+  def beforeAll(): Unit = {
     db.execSQL("CREATE TABLE Test(_id INTEGER PRIMARY KEY, value TEXT);")
   }
 
-  def after = {
+  override def afterAll(): Unit = {
     db.execSQL("DROP TABLE IF EXISTS Test;")
     db.close()
+    RuntimeEnvironment.application.getDatabasePath(helper.getDatabaseName).delete()
+    super.afterAll()
   }
+}
 
+class DatabaseInsertRoboSpec
+extends DatabaseRoboSpec
+{
   def is = s2"""
   Robolectric test using database
+
   Insert row $insert
-  Query all rows from empty table $query
   """
 
   def insert = {
@@ -51,6 +48,16 @@ class DatabaseRoboSpec extends RobolectricSpecification with MustMatchers with B
 
     db.insert("Test", null, values) must_== 1
   }
+}
+
+class DatabaseQueryRoboSpec
+extends DatabaseRoboSpec
+{
+  def is = s2"""
+  Robolectric test using database
+
+  Query all rows from empty table $query
+  """
 
   def query = {
     val cursor = db.query("Test", null, null, null, null, null, null)
