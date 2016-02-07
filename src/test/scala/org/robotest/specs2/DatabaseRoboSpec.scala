@@ -12,7 +12,11 @@ import org.specs2._, matcher._, specification._
  * - uses singe database for all tests
  * - creates test table before each test and drops it after
   */
-trait DatabaseRoboSpec extends RobolectricSpecification with MustMatchers {
+trait DatabaseRoboSpec
+extends RobolectricSpecification
+with MustMatchers
+with BeforeAll
+{
   lazy val helper: SQLiteOpenHelper = new SQLiteOpenHelper(RuntimeEnvironment.application, "test", null, 1) {
       override def onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int): Unit = {}
       override def onCreate(db: SQLiteDatabase): Unit = {}

@@ -5,7 +5,7 @@ import core.Env
 
 abstract class RobolectricSpecification
 extends Specification
-with BeforeAfterAll
+with AfterAll
 with robotest.RoboTest
 {
   var runner = new RoboSuiteRunner(this)
